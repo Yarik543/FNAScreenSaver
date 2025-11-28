@@ -150,11 +150,11 @@ namespace ScreenSaverFna
             prevMs = ms;
 
             float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
-            int screenW = graphics.PreferredBackBufferWidth;
-            int screenH = graphics.PreferredBackBufferHeight;
+            var screenW = graphics.PreferredBackBufferWidth;
+            var screenH = graphics.PreferredBackBufferHeight;
 
             // Обновление снежинок
-            for (int i = 0; i < snowflakes.Length; i++)
+            for (var i = 0; i < snowflakes.Length; i++)
             {
                 var s = snowflakes[i];
 
@@ -194,12 +194,19 @@ namespace ScreenSaverFna
 
             // Рисуем снежинки в порядке дальность->близко (можно оптимизировать)
             // Здесь просто рисуем все — порядок не критичен, т.к. все white alpha
-            for (int i = 0; i < snowflakes.Length; i++)
+            for (var i = 0; i < snowflakes.Length; i++)
             {
                 var s = snowflakes[i];
                 var origin = new Vector2(s.Texture.Width / 2f, s.Texture.Height / 2f);
                 float alpha = MathHelper.Lerp(0.5f, 1f, s.Layer);
-                spriteBatch.Draw(s.Texture, s.Position, null, Color.White * alpha, s.Rotation, origin, s.Scale, SpriteEffects.None, 0f);
+                var size = (int)MathHelper.Lerp(12f, 38f, s.Layer); // дальние маленькие, ближние чуть крупнее
+                Rectangle rect = new Rectangle(
+                    (int)s.Position.X,
+                    (int)s.Position.Y,
+                    size,
+                    size
+                );
+                spriteBatch.Draw(s.Texture, rect, null, Color.White * alpha);
             }
 
             spriteBatch.End();
