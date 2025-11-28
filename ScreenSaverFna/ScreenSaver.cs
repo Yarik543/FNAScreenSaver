@@ -1,8 +1,11 @@
 ﻿using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -13,50 +16,207 @@ namespace ScreenSaverFna
         GraphicsDeviceManager graphics;
         SpriteBatch spriteBatch;
 
-        public ScreenSaver() //This is the constructor, this function is called whenever the game class is created.
+        // Текстуры
+        Texture2D background;
+        Texture2D[] snowflakeTextures;
+
+        // Массив снежинок
+        Snowflake[] snowflakes;
+        const int SNOW_COUNT = 1200; // можно 1000-1500
+
+        Random rnd = new Random();
+
+        public ScreenSaver()
         {
             graphics = new GraphicsDeviceManager(this);
             Content.RootDirectory = "Content";
+
+            // Полноэкранный режим
+            graphics.IsFullScreen = true;
+            graphics.PreferredBackBufferWidth = GraphicsAdapter.DefaultAdapter.CurrentDisplayMode.Width;
+            graphics.PreferredBackBufferHeight = GraphicsAdapter.DefaultAdapter.CurrentDisplayMode.Height;
+
+            // Если хочешь окно — поставь IsFullScreen=false и укажи размеры.
         }
 
-        /// <summary>
-        /// This function is automatically called when the game launches to initialize any non-graphic variables.
-        /// </summary>
         protected override void Initialize()
         {
             base.Initialize();
         }
 
-        /// <summary>
-        /// Automatically called when your game launches to load any game assets (graphics, audio etc.)
-        /// </summary>
         protected override void LoadContent()
         {
-            // Create a new SpriteBatch, which can be used to draw textures.
             spriteBatch = new SpriteBatch(GraphicsDevice);
+
+            // --- ЗАГРУЗКА ТЕКСТУР ---
+            // Вариант A (рекомендуемый): файлы лежат в папке Content рядом с exe
+            // и имеют имена: village.png, q.png, w.png
+            // Тогда используем File.OpenRead:
+            try
+            {
+                background = Texture2D.FromStream(GraphicsDevice, File.OpenRead("Content/village.png"));
+
+                snowflakeTextures = new Texture2D[]
+                {
+                    Texture2D.FromStream(GraphicsDevice, File.OpenRead("Content/q.png")),
+                    Texture2D.FromStream(GraphicsDevice, File.OpenRead("Content/w.png"))
+                };
+            }
+            catch (Exception ex)
+            {
+                // Если файлов нет — создадим простые текстуры (резерв)
+                Console.WriteLine("Could not load Content files: " + ex.Message);
+                background = new Texture2D(GraphicsDevice, 1, 1);
+                background.SetData(new[] { Color.CornflowerBlue });
+
+                var px = new Texture2D(GraphicsDevice, 8, 8);
+                Color[] data = new Color[8 * 8];
+                for (int i = 0; i < data.Length; i++) data[i] = Color.White;
+                px.SetData(data);
+                snowflakeTextures = new Texture2D[] { px, px };
+            }
+
+            // Инициализация снежинок
+            InitSnowflakes();
         }
 
-        /// <summary>
-        /// Called each frame to update the game. Games usually runs 60 frames per second.
-        /// Each frame the Update function will run logic such as updating the world,
-        /// checking for collisions, gathering input, and playing audio.
-        /// </summary>
+        // Создает массив снежинок
+        private void InitSnowflakes()
+        {
+            int screenW = graphics.PreferredBackBufferWidth;
+            int screenH = graphics.PreferredBackBufferHeight;
+
+            snowflakes = new Snowflake[SNOW_COUNT];
+            for (int i = 0; i < SNOW_COUNT; i++)
+            {
+                // layer — глубина: 0..1 (далее ближе)
+                float layer = (float)rnd.NextDouble();
+
+                // скорость и масштаб зависят от layer (дальние медленнее и мельче)
+                float scale = MathHelper.Lerp(0.3f, 1.6f, layer); // 0.3..1.6
+                float speed = MathHelper.Lerp(20f, 420f, layer) * (0.7f + (float)rnd.NextDouble() * 0.6f);
+
+                // позиция случайная по экрану (разброс по Y чтобы не все сверху)
+                var pos = new Vector2(
+                    (float)rnd.NextDouble() * screenW,
+                    (float)rnd.NextDouble() * screenH
+                );
+
+                // текстура выбираем случайно из массива
+                var tex = snowflakeTextures[rnd.Next(snowflakeTextures.Length)];
+
+                // вращение/скорость вращения для красоты
+                float rotation = (float)rnd.NextDouble() * MathHelper.TwoPi;
+                float rotSpeed = (float)(rnd.NextDouble() * 0.6 - 0.3);
+
+                snowflakes[i] = new Snowflake
+                {
+                    Texture = tex,
+                    Position = pos,
+                    Speed = speed,
+                    Scale = scale,
+                    Rotation = rotation,
+                    RotationSpeed = rotSpeed,
+                    Layer = layer
+                };
+            }
+        }
+
+        protected override void UnloadContent()
+        {
+            // По желанию: освобождение ресурсов
+            // background?.Dispose();
+            // foreach (var t in snowflakeTextures) t?.Dispose();
+            base.UnloadContent();
+        }
+
+        KeyboardState prevKb;
+        MouseState prevMs;
+
         protected override void Update(GameTime gameTime)
         {
-            //Update the things FNA handles for us underneath the hood:
+            // Выход на любую клавишу или клик мышью
+            var kb = Keyboard.GetState();
+            var ms = Mouse.GetState();
+
+            if (kb.GetPressedKeys().Length > 0 && prevKb.GetPressedKeys().Length == 0)
+                Exit();
+
+            if ((ms.LeftButton == ButtonState.Pressed || ms.RightButton == ButtonState.Pressed)
+                 && (prevMs.LeftButton == ButtonState.Released && prevMs.RightButton == ButtonState.Released))
+                Exit();
+
+            prevKb = kb;
+            prevMs = ms;
+
+            float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
+            int screenW = graphics.PreferredBackBufferWidth;
+            int screenH = graphics.PreferredBackBufferHeight;
+
+            // Обновление снежинок
+            for (int i = 0; i < snowflakes.Length; i++)
+            {
+                var s = snowflakes[i];
+
+                // горизонтальный дрейф (ветер)
+                float drift = (float)Math.Sin((s.Position.Y + s.Position.X) * 0.001 + s.Layer * 10f) * (10f * (1f - s.Layer));
+                s.Position.X += drift * dt;
+                s.Position.Y += s.Speed * dt;
+
+                s.Rotation += s.RotationSpeed * dt;
+
+                // респаун сверху, когда вышли за экран
+                if (s.Position.Y > screenH + 50 || s.Position.X < -200 || s.Position.X > screenW + 200)
+                {
+                    s.Position.X = (float)rnd.NextDouble() * screenW;
+                    s.Position.Y = -(float)rnd.NextDouble() * 200 - 10;
+                    // можно немного менять скорость/scale при респавне:
+                    s.Layer = (float)rnd.NextDouble();
+                    s.Scale = MathHelper.Lerp(0.3f, 1.6f, s.Layer);
+                    s.Speed = MathHelper.Lerp(20f, 420f, s.Layer) * (0.7f + (float)rnd.NextDouble() * 0.6f);
+                }
+
+                snowflakes[i] = s;
+            }
+
             base.Update(gameTime);
         }
 
-        /// <summary>
-        /// This is called when the game is ready to draw to the screen, it's also called each frame.
-        /// </summary>
         protected override void Draw(GameTime gameTime)
         {
-            //This will clear what's on the screen each frame, if we don't clear the screen will look like a mess:
-            GraphicsDevice.Clear(Color.CornflowerBlue);
+            GraphicsDevice.Clear(Color.Black);
 
-            //Draw the things FNA handles for us underneath the hood:
+            spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend);
+
+            // Рисуем фон растянутым по экрану
+            Rectangle dest = new Rectangle(0, 0, graphics.PreferredBackBufferWidth, graphics.PreferredBackBufferHeight);
+            spriteBatch.Draw(background, dest, Color.White);
+
+            // Рисуем снежинки в порядке дальность->близко (можно оптимизировать)
+            // Здесь просто рисуем все — порядок не критичен, т.к. все white alpha
+            for (int i = 0; i < snowflakes.Length; i++)
+            {
+                var s = snowflakes[i];
+                var origin = new Vector2(s.Texture.Width / 2f, s.Texture.Height / 2f);
+                float alpha = MathHelper.Lerp(0.5f, 1f, s.Layer);
+                spriteBatch.Draw(s.Texture, s.Position, null, Color.White * alpha, s.Rotation, origin, s.Scale, SpriteEffects.None, 0f);
+            }
+
+            spriteBatch.End();
+
             base.Draw(gameTime);
+        }
+
+        // ---------- внутренний класс снежинки ----------
+        struct Snowflake
+        {
+            public Texture2D Texture;
+            public Vector2 Position;
+            public float Speed;
+            public float Scale;
+            public float Rotation;
+            public float RotationSpeed;
+            public float Layer;
         }
     }
 }
