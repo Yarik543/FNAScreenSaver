@@ -22,7 +22,7 @@ namespace ScreenSaverFna
 
         // Массив снежинок
         Snowflake[] snowflakes;
-        const int SNOW_COUNT = 1200; // можно 1000-1500
+        const int SNOW_COUNT = 1200; 
 
         Random rnd = new Random();
 
@@ -48,13 +48,9 @@ namespace ScreenSaverFna
         {
             spriteBatch = new SpriteBatch(GraphicsDevice);
 
-            // --- ЗАГРУЗКА ТЕКСТУР ---
-            // Вариант A (рекомендуемый): файлы лежат в папке Content рядом с exe
-            // и имеют имена: village.png, q.png, w.png
-            // Тогда используем File.OpenRead:
             try
             {
-                background = Texture2D.FromStream(GraphicsDevice, File.OpenRead("Content/village.png"));
+                background = Texture2D.FromStream(GraphicsDevice, File.OpenRead("Content/village.jpg"));
 
                 snowflakeTextures = new Texture2D[]
                 {
@@ -71,7 +67,7 @@ namespace ScreenSaverFna
 
                 var px = new Texture2D(GraphicsDevice, 8, 8);
                 Color[] data = new Color[8 * 8];
-                for (int i = 0; i < data.Length; i++) data[i] = Color.White;
+                for (var i = 0; i < data.Length; i++) data[i] = Color.White;
                 px.SetData(data);
                 snowflakeTextures = new Texture2D[] { px, px };
             }
@@ -83,17 +79,22 @@ namespace ScreenSaverFna
         // Создает массив снежинок
         private void InitSnowflakes()
         {
-            int screenW = graphics.PreferredBackBufferWidth;
-            int screenH = graphics.PreferredBackBufferHeight;
+            var screenW = graphics.PreferredBackBufferWidth;
+            var screenH = graphics.PreferredBackBufferHeight;
 
             snowflakes = new Snowflake[SNOW_COUNT];
-            for (int i = 0; i < SNOW_COUNT; i++)
+            for (var i = 0; i < SNOW_COUNT; i++)
             {
                 // layer — глубина: 0..1 (далее ближе)
                 float layer = (float)rnd.NextDouble();
 
+                var tex = snowflakeTextures[rnd.Next(snowflakeTextures.Length)];
+
                 // скорость и масштаб зависят от layer (дальние медленнее и мельче)
-                float scale = MathHelper.Lerp(0.3f, 1.6f, layer); // 0.3..1.6
+                float Scale = MathHelper.Lerp(0.05f, 0.25f, layer);
+                float maxSize = 64f;
+                float scaleLimit = maxSize / tex.Width;
+                float scale = Math.Min(Scale, scaleLimit);
                 float speed = MathHelper.Lerp(20f, 420f, layer) * (0.7f + (float)rnd.NextDouble() * 0.6f);
 
                 // позиция случайная по экрану (разброс по Y чтобы не все сверху)
@@ -103,7 +104,6 @@ namespace ScreenSaverFna
                 );
 
                 // текстура выбираем случайно из массива
-                var tex = snowflakeTextures[rnd.Next(snowflakeTextures.Length)];
 
                 // вращение/скорость вращения для красоты
                 float rotation = (float)rnd.NextDouble() * MathHelper.TwoPi;
